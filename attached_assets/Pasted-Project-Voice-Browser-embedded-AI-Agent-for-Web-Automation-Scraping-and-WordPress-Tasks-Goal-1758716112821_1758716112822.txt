@@ -1,0 +1,78 @@
+Project: Voice + Browser-embedded AI Agent for Web Automation, Scraping, and WordPress Tasks
+
+Goal:
+Create a Python/Node full-stack prototype that runs in a browser window inside the app (embedded browser / WebView), stores browsing history and authenticated sessions (securely), exposes an AI assistant to analyze pages and perform automated tasks (data extraction, content creation, WordPress edits, Elementor actions). The app must support voice and typed commands, job memory (repeatable workflows), and safe confirmations for destructive actions.
+
+High-level requirements:
+1. Stack
+   - Backend: Python (FastAPI) OR Node (Express) — pick **Python + FastAPI** for AI glue simplicity.
+   - Frontend: React (Vite) served by the Repl. Use an embedded browser WebView library for desktop wrappers; in Replit preview use an `<iframe>` that points to browser automation context.
+   - Automation engine: Playwright (Python) for controlled browser contexts and persistent profiles.
+   - AI: integrate with OpenAI-compatible API (configurable via env var `OPENAI_API_KEY`) — use LLM for intent parsing, summarization, content generation. Provide an abstraction so a different provider can be swapped.
+   - DB: SQLite for memory (tasks, templates, job state) with encrypted storage option.
+   - Worker queue: lightweight in-process queue (RQ or asyncio tasks) for long jobs.
+2. Browser & Sessions
+   - Use Playwright persistent context folders to store cookies, localStorage, credentials between runs. Save per-user profile in a safe folder.
+   - Provide UI to manage profiles and to export/import (encrypted) profile backups.
+   - Do NOT store raw passwords unencrypted. Offer OAuth flows for Google (Gmail) and WordPress application passwords or OAuth where possible.
+3. Gmail / Google access
+   - **Important:** Do not automate Gmail logins by scraping credentials. Implement optional Gmail integration via the **Google OAuth2 + Gmail API** for reading labels and parsing emails. For actions requiring the UI (rare), require explicit user confirmation each run and log all actions.
+4. WordPress & Elementor
+   - Use a small private WordPress plugin (scaffolded automatically) that exposes secure REST endpoints for:
+     - create/update post (title, content, meta)
+     - create drafts for translation
+     - push content into Elementor templates (store HTML blocks or Elementor JSON templates)
+     - bulk actions endpoints that accept arrays and return job ids
+   - Where plugin cannot cover a provider-specific page-builder screen, fall back to Playwright driving the WP admin UI using stable selectors (prefer data attributes).
+5. Features
+   - Push-to-talk voice input (browser mic capture) + typed input fallback.
+   - Natural language intent parser (LLM) that maps commands to templates with variables.
+   - Task recorder: record a sequence of automation steps (APIs or Playwright clicks), convert them into an abstracted task template with variable slots, store in DB, allow replay and editing.
+   - History viewer: searchable list of visited pages (url, title, timestamp, scraped summary).
+   - Page analysis panel: LLM summarises page, extracts structured data (e.g., tour fields), suggests actions.
+   - Scraper module with HTML extraction rules; obey robots.txt by default, set rate limits; configurable scraping policies.
+   - Translation pipeline: extract text nodes safely (preserve HTML), call translation provider (configurable), create draft posts in WP for review.
+   - Task safety: every destructive action (publish, delete, change price, shutdown) requires an explicit confirmation step (typed yes or confirm push).
+6. Security & compliance
+   - Use OAuth for Google, WordPress (application password or OAuth), and store tokens encrypted using AES with a master passphrase supplied at runtime (never commit passphrase).
+   - Log all automation actions with timestamps and diffs. Provide an “undo” when possible (e.g., restore previous post revision).
+   - Add per-site whitelist/blacklist and per-task scope (limit which domains the agent may act on).
+   - Display clear consent prompts when attempting to access protected accounts.
+7. UI/UX
+   - Left panel: Profiles & History.
+   - Center: Embedded browser (iframe) + analysis sidebar.
+   - Right panel: AI assistant chat, task templates, job queue.
+   - Top bar: push-to-talk button, mode selector (voice/text), settings (credentials, API keys).
+8. Dev & deployment
+   - Provide `requirements.txt` (Playwright, FastAPI, uvicorn, SQLAlchemy, cryptography, python-dotenv, openai, pyngrok optional).
+   - Provide `package.json` for the React frontend and a start script that launches FastAPI + frontend dev server.
+   - Include seed code: sample WordPress plugin (PHP), Playwright automation examples (login to WordPress via persistent context), and one sample task: “bulk create tour posts drafts from CSV.”
+9. Deliverables in the Repl
+   - `backend/` (FastAPI) with endpoints: `/api/intent`, `/api/run-task`, `/api/jobs`, `/api/history`.
+   - `frontend/` (React) with embedded browser frame and AI assistant UI.
+   - `playwright_scripts/` with example automation and a `profile/` folder for persistent contexts.
+   - `wp-plugin/t2e-agent.php` code that the user can copy into their WP site to enable secure REST actions.
+   - `README.md` with detailed run instructions, security warnings, and how to set up Google OAuth + WordPress API keys.
+10. Prompts & templates
+   - Include local prompt templates for: intent parsing, summarization, translation, content generation for blogs, and task abstraction generation. Keep them editable in the UI.
+11. Testing & demo
+   - Include a demo profile and a “sandbox” mode where Playwright uses a disposable profile and no real credentials.
+   - Provide example flows: open YouTube → ask AI to summarise → AI extracts title & suggested tags; WordPress → create draft with generated content.
+
+Safety & explicit warnings (must be shown in UI and README):
+- Automating account logins and actions may violate service Terms of Service (e.g., Gmail). Recommend using official APIs (Gmail API) for email access and WordPress REST for site changes.
+- Storing credentials requires strong encryption and user consent. The app will never transmit credentials to third parties; tokens are stored locally only.
+- A master passphrase is required to enable credential storage; losing it will prevent decryption.
+- The app will require Accessibility / Automation OS permissions for local Playwright GUI control.
+
+Final instruction to scaffold:
+- Create project skeleton with all files above.
+- Install dependencies and run a dev server with a single CLI: `./run_dev.sh`
+- Add comprehensive comments in all starter files explaining how to replace API keys, switch providers, and how to install the WP plugin.
+
+Environment variables:
+- OPENAI_API_KEY
+- GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+- WP_SITE_URL, WP_ADMIN_USER, WP_APP_PASSWORD (or instructions to use OAuth)
+
+End of prompt.
