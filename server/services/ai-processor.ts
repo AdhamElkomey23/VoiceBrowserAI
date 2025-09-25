@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { type ChatMessage, type VoiceCommand, type PageAnalysis, type TaskAction } from "@shared/schema";
+import { type ChatMessage, type VoiceCommand, type PageAnalysis, type TaskAction, type LoginRequest } from "@shared/schema";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ 
@@ -16,7 +16,7 @@ export class AIProcessor {
             role: "system",
             content: `You are a voice command processor for a browser automation assistant. Analyze the user's voice input and extract the intent and parameters. Respond with JSON in this format:
             {
-              "intent": "navigate|scrape|create_post|analyze|search|help",
+              "intent": "navigate|scrape|create_post|analyze|search|login|help",
               "confidence": 0.0-1.0,
               "parameters": {}
             }`
@@ -50,13 +50,21 @@ export class AIProcessor {
 
   async processChatMessage(message: string, context?: any): Promise<ChatMessage> {
     try {
-      const systemPrompt = `You are an AI assistant that helps with browser automation, web scraping, and WordPress management. You can:
+      const systemPrompt = `You are an AI assistant that helps with browser automation, web scraping, WordPress management, and website login automation. You can:
       - Analyze web pages and suggest actions
       - Help create and manage WordPress content
       - Extract data from websites
       - Automate repetitive web tasks
+      - Automate website logins and form interactions
+      - Detect login forms and guide users through authentication
       
-      When appropriate, suggest specific actions the user can take. Current page context: ${JSON.stringify(context || {})}
+      When a user asks to login to a website, help them by:
+      1. Analyzing the current page for login forms
+      2. Requesting credentials securely
+      3. Automating the login process
+      4. Suggesting post-login tasks
+      
+      Current page context: ${JSON.stringify(context || {})}
       
       Respond in a helpful, conversational tone. If you can suggest specific automation actions, include them in your response.`;
 
@@ -193,7 +201,118 @@ export class AIProcessor {
       });
     }
 
+    if (content.toLowerCase().includes("login") || content.toLowerCase().includes("sign in") || content.toLowerCase().includes("log in")) {
+      actions.push({
+        id: `action-${Date.now()}-login`,
+        type: "login",
+        label: "Login to Website",
+        parameters: { url: context?.url || "" }
+      });
+    }
+
+    if (content.toLowerCase().includes("fill") && (content.toLowerCase().includes("form") || content.toLowerCase().includes("field"))) {
+      actions.push({
+        id: `action-${Date.now()}-fill`,
+        type: "fill_form",
+        label: "Fill Form",
+        parameters: { url: context?.url || "" }
+      });
+    }
+
+    if (content.toLowerCase().includes("click") || content.toLowerCase().includes("button")) {
+      actions.push({
+        id: `action-${Date.now()}-click`,
+        type: "click_element",
+        label: "Click Element",
+        parameters: { url: context?.url || "" }
+      });
+    }
+
     return actions;
+  }
+
+  async detectLoginForm(url: string, pageContent: string): Promise<LoginRequest> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: `Analyze the webpage content and detect if there's a login form. Return JSON with:
+            {
+              "hasLoginForm": boolean,
+              "detectedSelectors": {
+                "username": "CSS selector for username field",
+                "password": "CSS selector for password field",
+                "submit": "CSS selector for submit button"
+              },
+              "loginUrl": "detected login page URL if different",
+              "confidence": 0.0-1.0
+            }`
+          },
+          {
+            role: "user",
+            content: `URL: ${url}\nPage Content: ${pageContent.substring(0, 3000)}`
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      
+      return {
+        id: `login-${Date.now()}`,
+        website: url,
+        needsCredentials: result.hasLoginForm || false,
+        detectedSelectors: result.detectedSelectors || {}
+      };
+    } catch (error) {
+      console.error("Login form detection failed:", error);
+      return {
+        id: `login-${Date.now()}`,
+        website: url,
+        needsCredentials: false
+      };
+    }
+  }
+
+  async generatePostLoginTasks(website: string, pageContent: string): Promise<TaskAction[]> {
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          {
+            role: "system",
+            content: `Analyze the post-login page content and suggest useful automation tasks. Return JSON array of actions:
+            [
+              {
+                "type": "fill_form|click_element|extract_data|custom",
+                "label": "User-friendly action description",
+                "parameters": {"selector": "CSS selector", "action": "specific action"}
+              }
+            ]`
+          },
+          {
+            role: "user",
+            content: `Website: ${website}\nPost-login page content: ${pageContent.substring(0, 3000)}`
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || "{}");
+      const actions = Array.isArray(result.actions) ? result.actions : [];
+      
+      return actions.map((action: any, index: number) => ({
+        id: `task-${Date.now()}-${index}`,
+        type: action.type || "custom",
+        label: action.label || "Perform Action",
+        parameters: action.parameters || {}
+      }));
+    } catch (error) {
+      console.error("Post-login task generation failed:", error);
+      return [];
+    }
   }
 
   async summarizeContent(content: string, maxLength = 200): Promise<string> {

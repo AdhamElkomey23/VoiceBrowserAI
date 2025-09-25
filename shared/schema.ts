@@ -149,9 +149,29 @@ export interface ChatMessage {
 
 export interface TaskAction {
   id: string;
-  type: 'wordpress_create_post' | 'scrape_data' | 'analyze_page' | 'custom';
+  type: 'wordpress_create_post' | 'scrape_data' | 'analyze_page' | 'login' | 'fill_form' | 'click_element' | 'extract_data' | 'custom';
   label: string;
   parameters: Record<string, any>;
+}
+
+export interface LoginCredentials {
+  website: string;
+  username: string;
+  password: string;
+  usernameSelector?: string;
+  passwordSelector?: string;
+  submitSelector?: string;
+}
+
+export interface LoginRequest {
+  id: string;
+  website: string;
+  needsCredentials: boolean;
+  detectedSelectors?: {
+    username?: string;
+    password?: string;
+    submit?: string;
+  };
 }
 
 export interface PageAnalysis {
