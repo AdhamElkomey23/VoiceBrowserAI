@@ -151,6 +151,25 @@ export class BrowserAutomation {
     return analysis;
   }
 
+  async takeScreenshot(sessionId: string): Promise<{ screenshot: string; timestamp: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    // In a real implementation, this would use Playwright page.screenshot()
+    // For now, we'll return a placeholder that indicates the page content
+    const timestamp = new Date().toISOString();
+    
+    // Generate a simulated screenshot representation based on the URL
+    const screenshotData = this.generateScreenshotPreview(session.url, session.title);
+    
+    return {
+      screenshot: screenshotData,
+      timestamp
+    };
+  }
+
   async executeCustomScript(sessionId: string, script: string): Promise<any> {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -257,6 +276,47 @@ export class BrowserAutomation {
       { src: "/sample-image-1.jpg", alt: "Sample image" },
       { src: "/sample-image-2.jpg", alt: "Another sample image" }
     ];
+  }
+
+  private generateScreenshotPreview(url: string, title: string): string {
+    // Generate an SVG-based preview showing the page structure
+    // In production, this would be replaced by actual Playwright screenshots
+    const svgContent = `
+      <svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+        <rect width="100%" height="100%" fill="#ffffff"/>
+        
+        <!-- Header -->
+        <rect x="0" y="0" width="100%" height="60" fill="#f8f9fa"/>
+        <text x="20" y="35" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#333">${title}</text>
+        
+        <!-- URL bar representation -->
+        <rect x="20" y="80" width="760" height="40" fill="#e9ecef" rx="4"/>
+        <text x="30" y="105" font-family="monospace" font-size="12" fill="#666">${url}</text>
+        
+        <!-- Content area -->
+        <rect x="20" y="140" width="760" height="420" fill="#fff" stroke="#dee2e6" stroke-width="1" rx="4"/>
+        
+        <!-- Simulated content blocks -->
+        <rect x="40" y="160" width="200" height="20" fill="#e9ecef" rx="2"/>
+        <rect x="40" y="190" width="300" height="15" fill="#f8f9fa" rx="2"/>
+        <rect x="40" y="215" width="250" height="15" fill="#f8f9fa" rx="2"/>
+        
+        <!-- Simulated navigation -->
+        <rect x="40" y="250" width="100" height="30" fill="#007bff" rx="4"/>
+        <text x="60" y="270" font-family="Arial, sans-serif" font-size="12" fill="white">Button</text>
+        
+        <rect x="160" y="250" width="100" height="30" fill="#6c757d" rx="4"/>
+        <text x="185" y="270" font-family="Arial, sans-serif" font-size="12" fill="white">Link</text>
+        
+        <!-- Footer -->
+        <text x="40" y="520" font-family="Arial, sans-serif" font-size="11" fill="#999">Live screenshot will appear here when Playwright is integrated</text>
+        <text x="40" y="540" font-family="Arial, sans-serif" font-size="11" fill="#999">Current URL: ${url}</text>
+      </svg>
+    `;
+    
+    // Convert SVG to base64 data URL
+    const base64 = Buffer.from(svgContent).toString('base64');
+    return `data:image/svg+xml;base64,${base64}`;
   }
 }
 

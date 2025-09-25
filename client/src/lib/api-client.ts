@@ -76,6 +76,16 @@ export class ApiClient {
     return response.json();
   }
 
+  async takeScreenshot(sessionId: string): Promise<{ screenshot: string; timestamp: string }> {
+    const response = await apiRequest("GET", `/api/browser/${sessionId}/screenshot`);
+    return response.json();
+  }
+
+  async getBrowserSession(sessionId: string): Promise<BrowserSession> {
+    const response = await apiRequest("GET", `/api/browser/session/${sessionId}`);
+    return response.json();
+  }
+
   // AI Processing
   async processVoiceCommand(text: string): Promise<VoiceCommand> {
     const response = await apiRequest("POST", "/api/ai/voice-command", { text });

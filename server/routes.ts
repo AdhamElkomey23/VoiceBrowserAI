@@ -183,6 +183,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/browser/:sessionId/screenshot", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const screenshot = await browserAutomation.takeScreenshot(sessionId);
+      res.json(screenshot);
+    } catch (error) {
+      res.status(500).json({ error: "Screenshot failed" });
+    }
+  });
+
+  app.get("/api/browser/session/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const session = browserAutomation.getSession(sessionId);
+      
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      
+      res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get session" });
+    }
+  });
+
   // AI Processing
   app.post("/api/ai/voice-command", async (req, res) => {
     try {

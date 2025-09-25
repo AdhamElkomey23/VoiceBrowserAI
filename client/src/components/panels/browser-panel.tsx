@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, RotateCcw, Brain, ChartLine, X, Loader2, ExternalLink } from "lucide-react";
+import { ArrowLeft, ArrowRight, RotateCcw, Brain, ChartLine, X, Loader2, ExternalLink, Camera } from "lucide-react";
 import { useBrowser } from "../../hooks/use-browser";
+import { apiClient } from "../../lib/api-client";
 import type { PageAnalysis } from "../../types";
 
 interface BrowserPanelProps {
@@ -14,10 +15,12 @@ interface BrowserPanelProps {
 export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
   const [currentUrl, setCurrentUrl] = useState("https://example.org");
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [frameError, setFrameError] = useState(false);
+  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [isLoadingScreenshot, setIsLoadingScreenshot] = useState(false);
   
   const {
     session,
+    sessionId,
     sessionLoading,
     isNavigating,
     canGoBack,
@@ -37,18 +40,35 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
     initializeSession();
   }, [initializeSession]);
 
-  // Update URL input when session URL changes
+  // Update URL input when session URL changes and take screenshot
   useEffect(() => {
     if (session?.url) {
       setCurrentUrl(session.url);
+      if (sessionId && session.url !== "about:blank") {
+        takeScreenshot();
+      }
     }
-  }, [session?.url]);
+  }, [session?.url, sessionId]);
+
+  const takeScreenshot = async () => {
+    if (!sessionId) return;
+    
+    try {
+      setIsLoadingScreenshot(true);
+      const result = await apiClient.takeScreenshot(sessionId);
+      setScreenshot(result.screenshot);
+    } catch (error) {
+      console.error("Failed to take screenshot:", error);
+    } finally {
+      setIsLoadingScreenshot(false);
+    }
+  };
 
   const handleNavigate = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUrl) {
+      setScreenshot(null);
       navigate(currentUrl);
-      setFrameError(false);
     }
   };
 
@@ -59,13 +79,16 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
     }
   };
 
-  const handleFrameError = () => {
-    setFrameError(true);
-  };
-
   const openInNewTab = () => {
     if (session?.url) {
       window.open(session.url, '_blank');
+    }
+  };
+
+  const handleRefresh = () => {
+    refresh();
+    if (sessionId) {
+      takeScreenshot();
     }
   };
 
@@ -74,7 +97,7 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
     // TODO: Implement action execution
   };
 
-  const isLoading = sessionLoading || isNavigating || session?.isLoading;
+  const isLoading = sessionLoading || isNavigating || session?.isLoading || isLoadingScreenshot;
 
   return (
     <div className="flex-1 flex flex-col bg-card">
@@ -104,10 +127,19 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
               variant="outline"
               size="sm"
               disabled={isNavigating}
-              onClick={refresh}
+              onClick={handleRefresh}
               data-testid="button-browser-refresh"
             >
               <RotateCcw className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoadingScreenshot || !sessionId}
+              onClick={takeScreenshot}
+              data-testid="button-take-screenshot"
+            >
+              <Camera className="w-4 h-4" />
             </Button>
           </div>
           
@@ -145,36 +177,52 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
       
       {/* Browser Frame Container */}
       <div className="flex-1 relative bg-muted/10">
-        {/* Embedded Browser iframe */}
-        {!frameError && session?.url ? (
-          <iframe 
-            src={session.url}
-            className="w-full h-full border-0"
-            title="Embedded Browser"
-            data-testid="browser-iframe"
-            onError={handleFrameError}
-            onLoad={(e) => {
-              // Check if frame loaded successfully
-              try {
-                const iframe = e.target as HTMLIFrameElement;
-                // This will throw if blocked by CORS/X-Frame-Options
-                iframe.contentWindow?.location.href;
-              } catch {
-                handleFrameError();
-              }
-            }}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted/20">
-            <div className="text-center space-y-4 max-w-md p-6">
-              <div className="text-lg font-medium text-foreground">Site Cannot Be Embedded</div>
-              <p className="text-sm text-muted-foreground">
-                This website prevents embedding in frames for security reasons.
-              </p>
-              <Button onClick={openInNewTab} className="gap-2" data-testid="button-open-external">
+        {/* Browser Screenshot Display */}
+        {screenshot ? (
+          <div className="w-full h-full relative bg-white">
+            <img 
+              src={screenshot}
+              className="w-full h-full object-contain"
+              alt="Browser Screenshot"
+              data-testid="browser-screenshot"
+            />
+            {/* Open in new tab overlay */}
+            <div className="absolute bottom-4 right-4">
+              <Button 
+                onClick={openInNewTab} 
+                size="sm" 
+                className="gap-2 bg-black/70 hover:bg-black/80 text-white"
+                data-testid="button-open-external"
+              >
                 <ExternalLink className="w-4 h-4" />
                 Open in New Tab
               </Button>
+            </div>
+          </div>
+        ) : session?.url && session.url !== "about:blank" ? (
+          <div className="w-full h-full flex items-center justify-center bg-muted/20">
+            <div className="text-center space-y-4 max-w-md p-6">
+              <div className="text-lg font-medium text-foreground">Loading Page Preview</div>
+              <p className="text-sm text-muted-foreground">
+                Generating a visual preview of {session.url}
+              </p>
+              <div className="flex items-center justify-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Taking screenshot...</span>
+              </div>
+              <Button onClick={openInNewTab} variant="outline" className="gap-2" data-testid="button-open-external">
+                <ExternalLink className="w-4 h-4" />
+                Open in New Tab
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted/20">
+            <div className="text-center space-y-4 max-w-md p-6">
+              <div className="text-lg font-medium text-foreground">Navigate to a Website</div>
+              <p className="text-sm text-muted-foreground">
+                Enter a URL above to start browsing and analyzing web content.
+              </p>
             </div>
           </div>
         )}
