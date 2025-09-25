@@ -67,7 +67,7 @@ export function useBrowser(profileId: string = "default-profile") {
   });
 
   // Page analysis
-  const { data: analysis, refetch: analyzeCurrentPage } = useQuery<PageAnalysis>({
+  const { data: analysis, refetch: analyzeCurrentPage, isFetching: isAnalyzing, error: analysisError } = useQuery<PageAnalysis>({
     queryKey: ["/api/browser", sessionId, "analyze"],
     queryFn: () => {
       if (!sessionId) throw new Error("No active session");
@@ -141,7 +141,7 @@ export function useBrowser(profileId: string = "default-profile") {
     
     // Page analysis
     analysis,
-    isAnalyzing: analyzeCurrentPage.isFetching,
+    isAnalyzing,
     
     // Scraping
     isScrapingData: scrapeMutation.isPending,
@@ -161,7 +161,7 @@ export function useBrowser(profileId: string = "default-profile") {
     
     // Error states
     navigationError: navigateMutation.error,
-    analysisError: analyzeCurrentPage.error,
+    analysisError,
     scrapingError: scrapeMutation.error,
   };
 }

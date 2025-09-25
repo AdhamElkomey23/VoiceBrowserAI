@@ -1,85 +1,71 @@
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ArrowRight, RotateCcw, Brain, ChartLine, X, Loader2 } from "lucide-react";
-import { apiClient } from "../../lib/api-client";
-import type { BrowserSession, PageAnalysis } from "../../types";
+import { ArrowLeft, ArrowRight, RotateCcw, Brain, ChartLine, X, Loader2, ExternalLink } from "lucide-react";
+import { useBrowser } from "../../hooks/use-browser";
+import type { PageAnalysis } from "../../types";
 
 interface BrowserPanelProps {
   onShowActionLog: () => void;
 }
 
 export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
-  const [currentUrl, setCurrentUrl] = useState("https://wordpress.com/dashboard");
+  const [currentUrl, setCurrentUrl] = useState("https://example.org");
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [sessionId] = useState("default-session");
+  const [frameError, setFrameError] = useState(false);
   
-  const queryClient = useQueryClient();
+  const {
+    session,
+    sessionLoading,
+    isNavigating,
+    canGoBack,
+    canGoForward,
+    analysis,
+    isAnalyzing,
+    initializeSession,
+    navigate,
+    goBack,
+    goForward,
+    refresh,
+    analyzePage
+  } = useBrowser();
 
-  // Mock browser session - in real implementation would create actual session
-  const { data: session } = useQuery<BrowserSession>({
-    queryKey: ["/api/browser/session", sessionId],
-    initialData: {
-      id: sessionId,
-      url: currentUrl,
-      title: "WordPress Dashboard",
-      isLoading: false,
-      canGoBack: true,
-      canGoForward: false
+  // Initialize browser session on component mount
+  useEffect(() => {
+    initializeSession();
+  }, [initializeSession]);
+
+  // Update URL input when session URL changes
+  useEffect(() => {
+    if (session?.url) {
+      setCurrentUrl(session.url);
     }
-  });
-
-  const { data: analysis } = useQuery<PageAnalysis>({
-    queryKey: ["/api/browser", sessionId, "analyze"],
-    queryFn: () => apiClient.analyzeCurrentPage(sessionId),
-    enabled: showAnalysis
-  });
-
-  const navigateMutation = useMutation({
-    mutationFn: (url: string) => apiClient.navigateToUrl(sessionId, url),
-    onSuccess: (newSession) => {
-      queryClient.setQueryData(["/api/browser/session", sessionId], newSession);
-      setCurrentUrl(newSession.url);
-    }
-  });
-
-  const backMutation = useMutation({
-    mutationFn: () => apiClient.browserBack(sessionId),
-    onSuccess: (newSession) => {
-      queryClient.setQueryData(["/api/browser/session", sessionId], newSession);
-      setCurrentUrl(newSession.url);
-    }
-  });
-
-  const forwardMutation = useMutation({
-    mutationFn: () => apiClient.browserForward(sessionId),
-    onSuccess: (newSession) => {
-      queryClient.setQueryData(["/api/browser/session", sessionId], newSession);
-      setCurrentUrl(newSession.url);
-    }
-  });
-
-  const refreshMutation = useMutation({
-    mutationFn: () => apiClient.browserRefresh(sessionId),
-    onSuccess: (newSession) => {
-      queryClient.setQueryData(["/api/browser/session", sessionId], newSession);
-    }
-  });
+  }, [session?.url]);
 
   const handleNavigate = (e: React.FormEvent) => {
     e.preventDefault();
     if (currentUrl) {
-      navigateMutation.mutate(currentUrl);
+      navigate(currentUrl);
+      setFrameError(false);
     }
   };
 
   const handleAnalyze = () => {
     setShowAnalysis(!showAnalysis);
     if (!showAnalysis) {
-      queryClient.invalidateQueries({ queryKey: ["/api/browser", sessionId, "analyze"] });
+      analyzePage();
+    }
+  };
+
+  const handleFrameError = () => {
+    setFrameError(true);
+  };
+
+  const openInNewTab = () => {
+    if (session?.url) {
+      window.open(session.url, '_blank');
     }
   };
 
@@ -88,7 +74,7 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
     // TODO: Implement action execution
   };
 
-  const isLoading = navigateMutation.isPending || session?.isLoading;
+  const isLoading = sessionLoading || isNavigating || session?.isLoading;
 
   return (
     <div className="flex-1 flex flex-col bg-card">
@@ -99,8 +85,8 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              disabled={!session?.canGoBack || backMutation.isPending}
-              onClick={() => backMutation.mutate()}
+              disabled={!canGoBack || isNavigating}
+              onClick={goBack}
               data-testid="button-browser-back"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -108,8 +94,8 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              disabled={!session?.canGoForward || forwardMutation.isPending}
-              onClick={() => forwardMutation.mutate()}
+              disabled={!canGoForward || isNavigating}
+              onClick={goForward}
               data-testid="button-browser-forward"
             >
               <ArrowRight className="w-4 h-4" />
@@ -117,8 +103,8 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              disabled={refreshMutation.isPending}
-              onClick={() => refreshMutation.mutate()}
+              disabled={isNavigating}
+              onClick={refresh}
               data-testid="button-browser-refresh"
             >
               <RotateCcw className="w-4 h-4" />
@@ -160,12 +146,38 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
       {/* Browser Frame Container */}
       <div className="flex-1 relative bg-muted/10">
         {/* Embedded Browser iframe */}
-        <iframe 
-          src="about:blank" 
-          className="w-full h-full border-0"
-          title="Embedded Browser"
-          data-testid="browser-iframe"
-        />
+        {!frameError && session?.url ? (
+          <iframe 
+            src={session.url}
+            className="w-full h-full border-0"
+            title="Embedded Browser"
+            data-testid="browser-iframe"
+            onError={handleFrameError}
+            onLoad={(e) => {
+              // Check if frame loaded successfully
+              try {
+                const iframe = e.target as HTMLIFrameElement;
+                // This will throw if blocked by CORS/X-Frame-Options
+                iframe.contentWindow?.location.href;
+              } catch {
+                handleFrameError();
+              }
+            }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted/20">
+            <div className="text-center space-y-4 max-w-md p-6">
+              <div className="text-lg font-medium text-foreground">Site Cannot Be Embedded</div>
+              <p className="text-sm text-muted-foreground">
+                This website prevents embedding in frames for security reasons.
+              </p>
+              <Button onClick={openInNewTab} className="gap-2" data-testid="button-open-external">
+                <ExternalLink className="w-4 h-4" />
+                Open in New Tab
+              </Button>
+            </div>
+          </div>
+        )}
         
         {/* Loading Overlay */}
         {isLoading && (
@@ -241,10 +253,14 @@ export function BrowserPanel({ onShowActionLog }: BrowserPanelProps) {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : isAnalyzing ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 <span className="text-sm text-muted-foreground">Analyzing page...</span>
+              </div>
+            ) : (
+              <div className="text-center py-4">
+                <span className="text-sm text-muted-foreground">Click Analyze to get insights about this page</span>
               </div>
             )}
           </Card>
