@@ -167,7 +167,7 @@ export function TaskManager({ onShowConfirmation }: TaskManagerProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full min-h-0">
       {/* Active Tasks */}
       {runningExecutions.length > 0 && (
         <div className="p-4 border-b border-border">

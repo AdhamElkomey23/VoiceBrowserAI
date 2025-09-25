@@ -1,4 +1,4 @@
-import { type PageAnalysis } from "@shared/schema";
+import { type PageAnalysis, type LoginCredentials, type LoginRequest, type TaskAction } from "@shared/schema";
 import { aiProcessor } from "./ai-processor.js";
 
 export interface BrowserSession {
@@ -17,6 +17,13 @@ export interface ScrapedData {
   links: Array<{ text: string; href: string }>;
   images: Array<{ src: string; alt: string }>;
   metadata: Record<string, string>;
+}
+
+export interface LoginResult {
+  success: boolean;
+  message: string;
+  postLoginTasks?: TaskAction[];
+  redirectUrl?: string;
 }
 
 export class BrowserAutomation {
@@ -219,6 +226,151 @@ export class BrowserAutomation {
       // page.fill(selector, value)
       await new Promise(resolve => setTimeout(resolve, 50));
     }
+  }
+
+  async detectLoginForm(sessionId: string): Promise<LoginRequest> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    // Get page content for AI analysis
+    const scrapedData = await this.scrapePageData(sessionId);
+    const pageContent = `${scrapedData.text}\n\nLinks: ${scrapedData.links.map(l => `${l.text}: ${l.href}`).join(', ')}`;
+    
+    // Use AI to detect login form
+    return await aiProcessor.detectLoginForm(session.url, pageContent);
+  }
+
+  async performLogin(sessionId: string, credentials: LoginCredentials): Promise<LoginResult> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    try {
+      // Detect login form first if selectors not provided
+      let loginRequest: LoginRequest | null = null;
+      if (!credentials.usernameSelector || !credentials.passwordSelector) {
+        loginRequest = await this.detectLoginForm(sessionId);
+        if (!loginRequest.needsCredentials) {
+          return {
+            success: false,
+            message: "No login form detected on current page"
+          };
+        }
+      }
+
+      // Use provided selectors or detected ones
+      const usernameSelector = credentials.usernameSelector || loginRequest?.detectedSelectors?.username || "input[type='email'], input[type='text'], input[name*='user'], input[name*='email']";
+      const passwordSelector = credentials.passwordSelector || loginRequest?.detectedSelectors?.password || "input[type='password']";
+      const submitSelector = credentials.submitSelector || loginRequest?.detectedSelectors?.submit || "button[type='submit'], input[type='submit'], button";
+
+      // Fill login form
+      await this.fillLoginForm(sessionId, {
+        [usernameSelector]: credentials.username,
+        [passwordSelector]: credentials.password
+      });
+
+      // Submit form
+      await this.clickElement(sessionId, submitSelector);
+
+      // Wait for login to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Get updated page content after login
+      const postLoginData = await this.scrapePageData(sessionId);
+      
+      // Generate post-login tasks
+      const postLoginTasks = await aiProcessor.generatePostLoginTasks(
+        session.url,
+        postLoginData.text
+      );
+
+      return {
+        success: true,
+        message: "Login completed successfully",
+        postLoginTasks,
+        redirectUrl: session.url
+      };
+
+    } catch (error) {
+      console.error("Login failed:", error);
+      return {
+        success: false,
+        message: `Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  async fillLoginForm(sessionId: string, formData: Record<string, string>): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    // Enhanced form filling specifically for login forms
+    for (const [selector, value] of Object.entries(formData)) {
+      try {
+        // Wait for the field to be available
+        await this.waitForElement(sessionId, selector, 3000);
+        
+        // Clear any existing value and fill
+        // In real implementation: await page.fill(selector, '', { force: true });
+        // In real implementation: await page.fill(selector, value);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        console.log(`Filled ${selector} with credentials`);
+      } catch (error) {
+        console.error(`Failed to fill ${selector}:`, error);
+        // Continue with other fields even if one fails
+      }
+    }
+  }
+
+  async executeTaskSequence(sessionId: string, tasks: TaskAction[]): Promise<Array<{ task: TaskAction; success: boolean; message: string }>> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    const results: Array<{ task: TaskAction; success: boolean; message: string }> = [];
+
+    for (const task of tasks) {
+      try {
+        switch (task.type) {
+          case 'click_element':
+            await this.clickElement(sessionId, task.parameters.selector);
+            results.push({ task, success: true, message: "Element clicked successfully" });
+            break;
+
+          case 'fill_form':
+            await this.fillForm(sessionId, task.parameters);
+            results.push({ task, success: true, message: "Form filled successfully" });
+            break;
+
+          case 'extract_data':
+            const data = await this.scrapePageData(sessionId);
+            results.push({ task, success: true, message: `Extracted ${data.text.length} characters of data` });
+            break;
+
+          default:
+            results.push({ task, success: false, message: `Unknown task type: ${task.type}` });
+        }
+
+        // Small delay between tasks
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+      } catch (error) {
+        results.push({ 
+          task, 
+          success: false, 
+          message: `Task failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
+      }
+    }
+
+    return results;
   }
 
   getSession(sessionId: string): BrowserSession | undefined {

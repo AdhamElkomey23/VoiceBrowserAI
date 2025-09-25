@@ -208,6 +208,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Login Automation Routes
+  app.get("/api/browser/:sessionId/detect-login", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const loginRequest = await browserAutomation.detectLoginForm(sessionId);
+      
+      // Log the login detection action
+      await storage.addActionLog({
+        userId: DEFAULT_USER_ID,
+        action: "detect_login",
+        details: { sessionId, detected: loginRequest.needsCredentials },
+        url: loginRequest.website
+      });
+      
+      res.json(loginRequest);
+    } catch (error) {
+      console.error("Login detection failed:", error);
+      res.status(500).json({ error: "Failed to detect login form" });
+    }
+  });
+
+  app.post("/api/browser/:sessionId/login", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const credentials = req.body;
+      
+      // Validate credentials (don't log the actual credentials for security)
+      if (!credentials.username || !credentials.password || !credentials.website) {
+        return res.status(400).json({ error: "Username, password, and website are required" });
+      }
+      
+      const result = await browserAutomation.performLogin(sessionId, credentials);
+      
+      // Log the login attempt (success/failure only, not credentials)
+      await storage.addActionLog({
+        userId: DEFAULT_USER_ID,
+        action: "login_attempt",
+        details: { 
+          sessionId, 
+          success: result.success,
+          website: credentials.website,
+          postLoginTasksCount: result.postLoginTasks?.length || 0
+        },
+        url: credentials.website
+      });
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Login failed:", error);
+      res.status(500).json({ error: "Login process failed" });
+    }
+  });
+
+  app.post("/api/browser/:sessionId/execute-tasks", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const { tasks } = req.body;
+      
+      if (!Array.isArray(tasks)) {
+        return res.status(400).json({ error: "Tasks must be an array" });
+      }
+      
+      const results = await browserAutomation.executeTaskSequence(sessionId, tasks);
+      
+      // Log task execution
+      await storage.addActionLog({
+        userId: DEFAULT_USER_ID,
+        action: "execute_tasks",
+        details: { 
+          sessionId, 
+          tasksCount: tasks.length,
+          successCount: results.filter(r => r.success).length
+        },
+        url: browserAutomation.getSession(sessionId)?.url
+      });
+      
+      res.json({ results });
+    } catch (error) {
+      console.error("Task execution failed:", error);
+      res.status(500).json({ error: "Failed to execute tasks" });
+    }
+  });
+
   // AI Processing
   app.post("/api/ai/voice-command", async (req, res) => {
     try {

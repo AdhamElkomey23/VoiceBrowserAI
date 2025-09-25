@@ -72,9 +72,9 @@ export function ChatInterface({ inputMode }: ChatInterfaceProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col h-full min-h-0">
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
         {messages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <Bot className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
@@ -149,7 +149,7 @@ export function ChatInterface({ inputMode }: ChatInterfaceProps) {
       </div>
       
       {/* Chat Input */}
-      <div className="p-4 border-t border-border">
+      <div className="p-4 border-t border-border flex-shrink-0">
         <form onSubmit={handleSendMessage} className="space-y-3">
           <div className="flex space-x-2">
             <div className="flex-1 relative">

@@ -14,10 +14,10 @@ export function RightPanel({ inputMode, onShowConfirmation }: RightPanelProps) {
   const [activeTab, setActiveTab] = useState("chat");
 
   return (
-    <div className="w-96 bg-card border-l border-border flex flex-col">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+    <div className="w-96 bg-card border-l border-border flex flex-col h-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col h-full">
         {/* Tab Navigation */}
-        <TabsList className="grid w-full grid-cols-2 rounded-none border-b">
+        <TabsList className="grid w-full grid-cols-2 rounded-none border-b flex-shrink-0">
           <TabsTrigger 
             value="chat" 
             className="flex items-center space-x-2"
@@ -37,11 +37,11 @@ export function RightPanel({ inputMode, onShowConfirmation }: RightPanelProps) {
         </TabsList>
         
         {/* Tab Content */}
-        <TabsContent value="chat" className="flex-1 flex flex-col p-0 m-0">
+        <TabsContent value="chat" className="flex-1 flex flex-col p-0 m-0 min-h-0">
           <ChatInterface inputMode={inputMode} />
         </TabsContent>
         
-        <TabsContent value="tasks" className="flex-1 flex flex-col p-0 m-0">
+        <TabsContent value="tasks" className="flex-1 flex flex-col p-0 m-0 min-h-0">
           <TaskManager onShowConfirmation={onShowConfirmation} />
         </TabsContent>
       </Tabs>
